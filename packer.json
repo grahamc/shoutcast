@@ -1,0 +1,47 @@
+{
+    "builders": [
+        {
+            "type": "amazon-ebs",
+            "region": "us-east-1",
+            "source_ami": "{{user `source_ami`}}",
+            "instance_type": "t2.micro",
+            "ssh_username": "ubuntu",
+            "ami_name": "ShoutCast {{timestamp}}",
+            "subnet_id": "{{user `subnet_id`}}",
+            "vpc_id": "{{user `vpc_id`}}",
+            "associate_public_ip_address": true,
+            "tags": {
+                "Name": "ShoutCast Streaming Server"
+            }
+        }
+    ],
+    "provisioners": [
+        {
+            "type": "file",
+            "source": "image.tar.gz",
+            "destination": "/tmp/image.tar.gz"
+        },
+        {
+            "type": "shell",
+            "inline": [
+                "set -eux",
+                "sudo apt-get update",
+                "sudo apt-get install -y curl awscli wget python-setuptools",
+                "curl -sSL https://get.docker.com/ | sh",
+                "cd /tmp",
+                "wget https://s3.amazonaws.com/cloudformation-examples/aws-cfn-bootstrap-latest.tar.gz",
+                "tar -zvvxf aws-cfn-bootstrap-latest.tar.gz",
+                "cd aws-cfn*/",
+                "sudo easy_install .",
+                "zcat /tmp/image.tar.gz | sudo docker load",
+                "rm /tmp/image.tar.gz",
+                "sudo docker images"
+            ]
+        }
+    ],
+    "variables": {
+        "source_ami": "ami-d05e75b8",
+        "subnet_id": "subnet-c2d94fe9",
+        "vpc_id": "vpc-88dbe2ed"
+    }
+}
