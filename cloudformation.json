@@ -38,6 +38,17 @@
             "ConstraintDescription" : "must be a valid EC2 instance type."
         },
 
+        "TargetRoute53Domain": {
+            "Description": "The Route53 Zone to update with an elastic IP",
+            "Type": "String"
+        },
+
+        "TargetRoute53Name": {
+            "Description": "The subdomain to place before your root (can be empty)",
+            "Type": "String",
+            "Default": ""
+        },
+
         "SourcePassword": {
             "Description": "Password to stream to this server",
             "Type": "String"
@@ -50,11 +61,6 @@
 
         "AdminPassword": {
             "Description": "Password to administrate to this server",
-            "Type": "String"
-        },
-
-        "ServerName": {
-            "Description": "DNS name to advertise streaming",
             "Type": "String"
         },
 
@@ -77,6 +83,10 @@
             "VPC"     : { "CIDR" : "10.0.0.0/16" },
             "Public"  : { "CIDR" : "10.0.0.0/24" }
         }
+    },
+
+    "Conditions": {
+        "UseNakedDomain": { "Fn::Equals": [{"Ref": "TargetRoute53Name"}, "" ] }
     },
 
     "Resources" : {
@@ -239,6 +249,68 @@
             }
         },
 
+        "ShoutCastRole": {
+            "Type": "AWS::IAM::Role",
+            "Properties": {
+                "Path": "/",
+                "AssumeRolePolicyDocument": {
+                    "Version": "2012-10-17",
+                    "Statement": [ {
+                        "Effect": "Allow",
+                        "Principal": {
+                            "Service": [ "ec2.amazonaws.com" ]
+                        },
+                        "Action": [ "sts:AssumeRole" ]
+                    } ]
+                },
+                "Policies": [ {
+                    "PolicyName": "BindPublicEIP",
+                    "PolicyDocument": {
+                        "Version" : "2012-10-17",
+                        "Statement": [ {
+                            "Effect": "Allow",
+                            "Action": "ec2:AssociateAddress",
+                            "Resource": "*"
+                        } ]
+                    }
+                } ]
+            }
+        },
+
+        "ShoutCastInstanceProfile": {
+            "Type": "AWS::IAM::InstanceProfile",
+            "Properties": {
+                "Path": "/",
+                "Roles":[ { "Ref": "ShoutCastRole" } ]
+            }
+        },
+
+        "ShoutCastServerEIP": {
+            "Type": "AWS::EC2::EIP",
+            "Properties": {
+                "Domain": "vpc"
+            }
+        },
+
+        "Route53RecordSet": {
+            "Type": "AWS::Route53::RecordSet",
+            "Properties": {
+                "HostedZoneName": {"Ref": "TargetRoute53Domain"},
+                "Name": {
+                    "Fn::If": [
+                        "UseNakedDomain",
+                        {"Ref": "TargetRoute53Domain"},
+                        { "Fn::Join": [".", [{"Ref": "TargetRoute53Name"}, {"Ref": "TargetRoute53Domain"}]]}
+                    ]
+                },
+                "Type": "A",
+                "TTL": "60",
+                "ResourceRecords": [
+                    { "Ref": "ShoutCastServerEIP" }
+                ]
+            }
+        },
+
         "ShoutCastServers" : {
             "Type" : "AWS::AutoScaling::AutoScalingGroup",
             "DependsOn" : "PublicRoute",
@@ -247,8 +319,8 @@
                 "VPCZoneIdentifier" : [{ "Ref" : "PublicSubnet" }],
                 "LaunchConfigurationName" : { "Ref" : "ShoutCastLaunchConfig"  },
                 "MinSize" : "0",
-                "MaxSize" : "1",
-                "DesiredCapacity" : "1",
+                "MaxSize" : "0",
+                "DesiredCapacity" : "0",
                 "Tags" : [ { "Key" : "Network", "Value" : "Public", "PropagateAtLaunch" : "true" } ]
             },
             "UpdatePolicy": {
@@ -258,6 +330,26 @@
                     "PauseTime" : "PT1M",
                     "WaitOnResourceSignals": "false"
                 }
+            }
+        },
+        "ShoutCastServersScaleUpSundayMorning": {
+            "Type" : "AWS::AutoScaling::ScheduledAction",
+            "Properties" : {
+                "AutoScalingGroupName" : { "Ref": "ShoutCastServers" },
+                "DesiredCapacity" : 1,
+                "MaxSize" : 1,
+                "MinSize" : 1,
+                "Recurrence" : "0 5 * * 0"
+            }
+        },
+        "ShoutCastServersScaleDownMondayMorning": {
+            "Type" : "AWS::AutoScaling::ScheduledAction",
+            "Properties" : {
+                "AutoScalingGroupName" : { "Ref": "ShoutCastServers" },
+                "DesiredCapacity" : 0,
+                "MaxSize" : 0,
+                "MinSize" : 0,
+                "Recurrence" : "0 5 * * 1"
             }
         },
 
@@ -272,7 +364,7 @@
                                     "SOURCE_PASSWORD=", {"Ref": "SourcePassword"}, "\n",
                                     "RELAY_PASSWORD=", {"Ref": "RelayPassword"}, "\n",
                                     "ADMIN_PASSWORD=", {"Ref": "AdminPassword"}, "\n",
-                                    "SERVERNAME=", {"Ref": "ServerName"}, "\n",
+                                    "SERVERNAME=", {"Ref": "Route53RecordSet"}, "\n",
                                     "LISTEN_ADDRESS=", {"Ref": "ListenAddress"}, "\n"
                                 ]]},
                                 "mode"    : "000644",
@@ -288,6 +380,7 @@
                 "ImageId"        : { "Ref": "ShoutCastAMI" },
                 "SecurityGroups" : [ { "Ref" : "PublicShoutCastSecurityGroup" } ],
                 "InstanceType"   : { "Ref" : "ShoutCastInstanceType" },
+                "IamInstanceProfile": {"Ref": "ShoutCastInstanceProfile" },
                 "KeyName"        : { "Ref" : "KeyName" },
                 "AssociatePublicIpAddress" : "true",
                 "UserData"       : { "Fn::Base64" : { "Fn::Join" : ["", [
@@ -306,6 +399,16 @@
                     "    -p 9001:9001",
                     "    --name shoutcast",
                     "    shoutcast:latest\n",
+
+                    "aws ec2 associate-address",
+                    "    --allow-reassociation",
+                    "    --region ",
+                    { "Ref": "AWS::Region" },
+                    "    --allocation-id ",
+                    { "Fn::GetAtt": [ "ShoutCastServerEIP", "AllocationId" ] },
+                    "    --instance-id ",
+                    "    $(ec2metadata --instance-id)",
+                    "\n",
 
                     "# Signal completion\n",
                     "cfn-signal -e $? ",
