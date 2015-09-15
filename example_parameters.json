@@ -1,0 +1,32 @@
+[
+    {
+        "ParameterKey": "KeyName",
+        "ParameterValue": "september15",
+        "UsePreviousValue": false
+    },
+    {
+        "ParameterKey": "TargetRoute53Domain",
+        "ParameterValue": "myexampledomain.com.",
+        "UsePreviousValue": false
+    },
+    {
+        "ParameterKey": "TargetRoute53Name",
+        "ParameterValue": "streaming",
+        "UsePreviousValue": false
+    },
+    {
+        "ParameterKey": "SourcePassword",
+        "ParameterValue": "stream1",
+        "UsePreviousValue": false
+    },
+    {
+        "ParameterKey": "RelayPassword",
+        "ParameterValue": "relay1",
+        "UsePreviousValue": false
+    },
+    {
+        "ParameterKey": "AdminPassword",
+        "ParameterValue": "LetMeIn!",
+        "UsePreviousValue": false
+    }
+]

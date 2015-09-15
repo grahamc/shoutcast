@@ -67,7 +67,7 @@
         "ShoutCastAMI": {
             "Description": "AMI to deploy with",
             "Type": "String",
-            "Default": "ami-dd2055b8"
+            "Default": "ami-f1384f94"
         },
 
         "ListenAddress": {
