@@ -3,6 +3,23 @@
 This repository has three components, all set to get you a running ShoutCast
 instance.
 
+## To just use the cloudformation step...
+
+1. Edit `example_parameters.json` with the domain name you want to use (make sure it already exists in route53 first.)
+2. Edit `example_parameters.json` to have the actual passwords you want
+3. Run:
+
+```
+aws
+    --region us-east-1
+    cloudformation update-stack
+    --capabilities CAPABILITY_IAM
+    --stack-name ExampleShoutcastStack
+    --template-body file://./cloudformation.json
+    --parameters file://./example_parameters.json
+```
+
+## To make your own AMI (not required, the default AMI is public.)
 **Note**: steps 1 and 2 can be done with `make ami` in the [Makefil](./Makefile).
 
 1. Dockerfile: `docker build -t . shoutcast` will get you a usable docker
